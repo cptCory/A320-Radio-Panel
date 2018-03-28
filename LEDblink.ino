@@ -20,17 +20,18 @@ float frq = 0;
 
 String outpt = "";
 
-String message;
+String message = "";
+
+union in_ref {
+	byte asBytes[4];
+	float asFloat;
+} in_data;
 
 
 void setup()
 {
 	/* add setup code here */
 	
-	pinMode(SH_CP, OUTPUT);
-	pinMode(ST_CP, OUTPUT);
-	pinMode(DS, OUTPUT);
-
 	pinMode(LED, OUTPUT);
 	digitalWrite(LED, LOW);
 	pinMode(A0, INPUT);
@@ -72,7 +73,7 @@ void setup()
 	LED_0F[27] = 0x91; //Y
 	LED_0F[28] = 0xFE; //hight -
 
-	Serial.begin(9600);
+	Serial.begin(38400);
 }
 
 void loop()
@@ -93,21 +94,47 @@ void loop()
 	disp.send(LED_0F[10], 0b1111);    //send simbol "A" to all indicators
 	delay(2000);
 	*/
-	if (frq == 0)
+	if (in_data.asFloat == 0)
 	{
 		disp.send(0x36, 0b1111);
 	}
 	else
 	{
-		disp.digit2((frqH), 0b0100, 15);
-		disp.digit2(frqL, 0b0001, 15);
+		//disp.digit2((frqH), 0b0100, 15);
+		//disp.digit2(frqL, 0b0001, 15);
+		//disp.send(0x7F, 0b0100);
+
+		disp.digit2((int)(in_data.asFloat/100), 0b0100, 15);
+		disp.digit2((int)in_data.asFloat, 0b0001, 15);
 		disp.send(0x7F, 0b0100);
 	}
 	rotbtn();
-	while (Serial.available())
+	if (Serial.available())
 	{
-		message = Serial.readString();
-		Serial.println(message);
+		if (Serial.read() == '$')
+		{
+			String tmp = Serial.readStringUntil(',');
+			in_data.asFloat = tmp.toFloat();
+				/*
+			while (Serial.read() != ',')
+			{
+
+			
+				for (int i = 0; i < 4; i++)
+				{
+					in_data.asBytes[i] = Serial.read();
+					delay(1);
+
+					digitalWrite(LED, HIGH);
+					//delay(300);
+					digitalWrite(LED, LOW);
+					//delay(300);
+				}
+
+			}
+			*/
+		}
+		
 	}
 	//printFreq();
 }
@@ -120,13 +147,16 @@ void rotbtn()
 	if (!pressed && !digitalRead(SW))
 	{
 		pressed = true;
-		Serial.println("Button pressed.");
+		digitalWrite(LED, HIGH);
+		in_data.asFloat = 11824;
+		//Serial.println("Button pressed.");
 	}
 	// Handle button released
 	else if (pressed && digitalRead(SW))
 	{
 		pressed = false;
-		Serial.println("Button released.");
+		digitalWrite(LED, LOW);
+		//Serial.println("Button released.");
 	}
 	digitalWrite(13, pressed);
 }
@@ -140,16 +170,16 @@ void frqHchange()
 		if (digitalRead(A0) != digitalRead(A1))
 		{
 			frqH++;
-			if (frqH > 136)
-				frqH = 118;
 		}
 		else
 		{
 			frqH--;
-			if (frqH < 118)
-				frqH = 136;
 		}
 
+		if (frqH > 136)
+			frqH = 118;
+		else if (frqH < 118)
+			frqH = 136;
 		printFreq();
 	}
 	last_interrupt_time = interrupt_time;
@@ -175,6 +205,10 @@ void frqLchange()
 				frqL = 99;
 		}
 
+		if (frqH > 136)
+			frqH = 118;
+		else if (frqH < 118)
+			frqH = 136;
 		printFreq();
 	}
 	last_interrupt_time = interrupt_time;
@@ -185,5 +219,8 @@ void printFreq()
 	frq = (float)frqH + ((float)frqL / 100.0);
 	//outpt = "Selected frequency: " + (String)frqH + '.' + (String)frqL;
 	outpt = "Selected frequency: " + (String)frq;
-	Serial.println(outpt);
+	//Serial.println(outpt);
+	int xoutput = (frqH*100) + frqL;
+	Serial.print('$' + (String)xoutput + ',');
+	delay(1);
 }
