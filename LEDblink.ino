@@ -15,7 +15,7 @@ TM74HC595Display disp(SH_CP, ST_CP, DS);
 unsigned char LED_0F[29];
 
 volatile uint8_t frqH = 0;
-volatile uint8_t frqL = 0;
+volatile uint16_t frqL = 0;
 float frq = 0;
 
 String outpt = "";
@@ -26,6 +26,12 @@ union in_ref {
 	byte asBytes[4];
 	float asFloat;
 } in_data;
+
+struct radio {
+	int activeFreq;
+	int standbyFreq;
+	boolean activeBtn;
+}com1;
 
 
 void setup()
@@ -94,7 +100,7 @@ void loop()
 	disp.send(LED_0F[10], 0b1111);    //send simbol "A" to all indicators
 	delay(2000);
 	*/
-	if (in_data.asFloat == 0)
+	if (com1.standbyFreq == 0)
 	{
 		disp.send(0x36, 0b1111);
 	}
@@ -104,61 +110,53 @@ void loop()
 		//disp.digit2(frqL, 0b0001, 15);
 		//disp.send(0x7F, 0b0100);
 
-		disp.digit2((int)(in_data.asFloat/100), 0b0100, 15);
-		disp.digit2((int)in_data.asFloat, 0b0001, 15);
+		//disp.digit2((int)(in_data.asFloat/100), 0b0100, 15);
+		//disp.digit2((int)in_data.asFloat, 0b0001, 15);
+
+		disp.digit4((int)com1.standbyFreq, 15);
 		disp.send(0x7F, 0b0100);
 	}
+
+	
+
 	rotbtn();
-	if (Serial.available())
+	
+	static boolean freqLoaded = false;
+	if (Serial.available() && !freqLoaded)
 	{
 		if (Serial.read() == '$')
 		{
-			String tmp = Serial.readStringUntil(',');
-			in_data.asFloat = tmp.toFloat();
-				/*
-			while (Serial.read() != ',')
-			{
-
-			
-				for (int i = 0; i < 4; i++)
-				{
-					in_data.asBytes[i] = Serial.read();
-					delay(1);
-
-					digitalWrite(LED, HIGH);
-					//delay(300);
-					digitalWrite(LED, LOW);
-					//delay(300);
-				}
-
-			}
-			*/
+			com1.standbyFreq = Serial.readStringUntil(',').toInt();
+			com1.activeFreq = Serial.readStringUntil(',').toInt();
+			freqLoaded = true;
 		}
-		
 	}
+	
 	//printFreq();
 }
 
 void rotbtn()
 {
-	static bool pressed = !digitalRead(SW);
+	//static bool pressed = !digitalRead(SW);
 
 	// Handle button pressed
-	if (!pressed && !digitalRead(SW))
+	if (!com1.activeBtn && !digitalRead(SW))
 	{
-		pressed = true;
+		// Switch Active and Standby Frquency
+		int tmpFreq = com1.activeFreq;
+		com1.activeBtn = true;
 		digitalWrite(LED, HIGH);
-		in_data.asFloat = 11824;
-		//Serial.println("Button pressed.");
+		com1.activeFreq = com1.standbyFreq;
+		com1.standbyFreq = tmpFreq;
+		Serial.print('$' + (String)com1.standbyFreq + ',' + (String)com1.activeFreq + ',');
 	}
 	// Handle button released
-	else if (pressed && digitalRead(SW))
+	else if (com1.activeBtn && digitalRead(SW))
 	{
-		pressed = false;
+		com1.activeBtn = false;
 		digitalWrite(LED, LOW);
-		//Serial.println("Button released.");
 	}
-	digitalWrite(13, pressed);
+	digitalWrite(13, com1.activeBtn);
 }
 
 void frqHchange()
@@ -191,18 +189,17 @@ void frqLchange()
 	uint16_t interrupt_time = millis();
 	if (interrupt_time - last_interrupt_time > 0)
 	{
-		//delayMicroseconds(10);
 		if (digitalRead(B0) == digitalRead(B1))
 		{
-			frqL++;
-			if (frqL > 99)
+			frqL += 25;
+			if (frqL > 999)
 				frqL = 0;
 		}
 		else
 		{
-			frqL--;
-			if (frqL > 99)
-				frqL = 99;
+			frqL -= 25;
+			if (frqL > 999)
+				frqL = 975;
 		}
 
 		if (frqH > 136)
@@ -216,11 +213,9 @@ void frqLchange()
 
 void printFreq()
 {
-	frq = (float)frqH + ((float)frqL / 100.0);
-	//outpt = "Selected frequency: " + (String)frqH + '.' + (String)frqL;
-	outpt = "Selected frequency: " + (String)frq;
-	//Serial.println(outpt);
-	int xoutput = (frqH*100) + frqL;
-	Serial.print('$' + (String)xoutput + ',');
+	frq = (float)frqH + ((float)frqL / 1000.0);
+
+	com1.standbyFreq = (frqH * 100) + (frqL / 10);
+	Serial.print('$' + (String)com1.standbyFreq + ',' + (String)com1.activeFreq + ',');
 	delay(1);
 }
